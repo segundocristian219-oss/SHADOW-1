@@ -44,8 +44,8 @@ if (user === OWNER_LID) return m.reply('👑 No puedes mutear al owner.')
 if (!(isAdmin || sender === OWNER_LID)) return m.reply('🚫 Solo los administradores pueden usar este comando.')
 
 const imgUrl = command === 'mute'
-    ? 'https://telegra.ph/file/f8324d9798fa2ed2317bc.png'
-    : 'https://telegra.ph/file/aea704d0b242b8c41bf15.png'
+? 'https://telegra.ph/file/f8324d9798fa2ed2317bc.png'
+: 'https://telegra.ph/file/aea704d0b242b8c41bf15.png'
 
 const thumb = await getThumb(imgUrl)
 
@@ -64,19 +64,19 @@ if (!mutedData[m.chat]) mutedData[m.chat] = []
 let name = 'Usuario'
 try { name = await conn.getName(user) } catch {}
 
-  if (command === 'mute') {
-    if (mutedData[m.chat].includes(user)) return m.reply('⚠️ Ese usuario ya está muteado.')
-    mutedData[m.chat].push(user)
-    await saveMutedData()
-    await conn.sendMessage(
-      m.chat,
-      { text: `🔇 *${name}* fue muteado.\nSus mensajes serán eliminados y no podrá usar comandos.`, mentions: [user] },
-      { quoted: preview }
-    )
-  } else {
-    if (!mutedData[m.chat].includes(user)) return m.reply('⚠️ Ese usuario no está muteado.')
-    mutedData[m.chat] = mutedData[m.chat].filter(u => u !== user)
-    if (!mutedData[m.chat].length) delete mutedData[m.chat]
+if (command === 'mute') {
+if (mutedData[m.chat].includes(user)) return m.reply('⚠️ Ese usuario ya está muteado.')
+mutedData[m.chat].push(user)
+await saveMutedData()
+await conn.sendMessage(
+m.chat,
+{ text: `🔇 *${name}* fue muteado.\nSus mensajes serán eliminados y no podrá usar comandos.`, mentions: [user] },
+{ quoted: preview }
+)
+} else {
+if (!mutedData[m.chat].includes(user)) return m.reply('⚠️ Ese usuario no está muteado.')
+mutedData[m.chat] = mutedData[m.chat].filter(u => u !== user)
+if (!mutedData[m.chat].length) delete mutedData[m.chat]
     await saveMutedData()
     await conn.sendMessage(
       m.chat,
