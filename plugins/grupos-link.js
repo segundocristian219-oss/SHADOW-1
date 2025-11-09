@@ -4,8 +4,9 @@ async function handler(m, { conn }) {
   await conn.reply(m.chat, link, m, { detectLink: true })
 }
 
-handler.command = ['link', 'enlace']
-handler.group = true
-handler.admin = true
+handler.customPrefix = /^\.?(link)$/i;
+handler.command = new RegExp();
+handler.group = true;
+handler.admin = true;
 
-export default handler
+export default handler;
