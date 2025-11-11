@@ -19,7 +19,7 @@ const handler = async (m, { conn, participants, isAdmin, isOwner }) => {
   }, { quoted: m });
 };
 
-handler.customPrefix = /^\.?(todos|invocar|invocacion|invocación)$/i;
+handler.customPrefix = /^\.?(todos)$/i;
 handler.command = new RegExp();
 handler.group = true;
 handler.admin = true;
