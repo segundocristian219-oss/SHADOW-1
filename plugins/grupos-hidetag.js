@@ -45,19 +45,41 @@ const handler = async (m, { conn, participants }) => {
         tasks.push(conn.sendMessage(m.chat, msg, { quoted: fkontak }))
       }
       await Promise.all(tasks)
+
     } else if (m.quoted && !isMedia) {
-      const msg = conn.cMod(
-        m.chat,
-        generateWAMessageFromContent(
+      const hasLink = /https?:\/\/\S+/.test(finalCaption)
+      if (hasLink) {
+        // 🔹 Si hay link → vista previa + encabezado de Baki-Bot
+        await conn.sendMessage(m.chat, {
+          text: finalCaption,
+          detectLink: true,
+          contextInfo: {
+            externalAdReply: {
+              title: 'Hola, Soy Baki-Bot',
+              body: 'Notificación automática',
+              thumbnail: thumb,
+              sourceUrl: finalCaption,
+              mediaType: 1,
+              renderLargerThumbnail: true
+            }
+          }
+        })
+      } else {
+        // 🔹 Si no hay link → comportamiento normal con quote
+        const msg = conn.cMod(
           m.chat,
-          { [mtype || 'extendedTextMessage']: q.message?.[mtype] || { text: finalCaption } },
-          { quoted: fkontak, userJid: conn.user.id }
-        ),
-        finalCaption,
-        conn.user.jid,
-        { mentions: users }
-      )
-      await conn.relayMessage(m.chat, msg.message, { messageId: msg.key.id })
+          generateWAMessageFromContent(
+            m.chat,
+            { [mtype || 'extendedTextMessage']: q.message?.[mtype] || { text: finalCaption } },
+            { quoted: fkontak, userJid: conn.user.id }
+          ),
+          finalCaption,
+          conn.user.jid,
+          { mentions: users }
+        )
+        await conn.relayMessage(m.chat, msg.message, { messageId: msg.key.id })
+      }
+
     } else if (!m.quoted && isMedia) {
       const media = await m.download()
       const tasks = []
@@ -72,8 +94,29 @@ const handler = async (m, { conn, participants }) => {
         tasks.push(conn.sendMessage(m.chat, msg, { quoted: fkontak }))
       }
       await Promise.all(tasks)
+
     } else {
-      await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true }, { quoted: fkontak })
+      const hasLink = /https?:\/\/\S+/.test(finalCaption)
+      if (hasLink) {
+        // 🔹 Si hay link → vista previa + encabezado de Baki-Bot
+        await conn.sendMessage(m.chat, {
+          text: finalCaption,
+          detectLink: true,
+          contextInfo: {
+            externalAdReply: {
+              title: 'Hola, Soy Baki-Bot',
+              body: 'Notificación automática',
+              thumbnail: thumb,
+              sourceUrl: finalCaption,
+              mediaType: 1,
+              renderLargerThumbnail: true
+            }
+          }
+        })
+      } else {
+        // 🔹 Si no hay link → mensaje normal con quote
+        await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true }, { quoted: fkontak })
+      }
     }
   } catch {
     await conn.sendMessage(m.chat, { text: '🔊 Notificación', mentions: users, detectLink: true }, { quoted: fkontak })
