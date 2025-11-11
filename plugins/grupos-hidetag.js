@@ -74,8 +74,8 @@ tasks.push(conn.sendMessage(m.chat, msg, { quoted: fkontak }))
 }
 await Promise.all(tasks)
 } else {
-// 🔹 Aquí se aplica la condición: si es texto con link, sin fkontak
-if (hasLink && !m.quoted && !isMedia) {
+// 🔹 Si es texto con link, sin importar si fue respuesta o no, no usa fkontak
+if (hasLink && !isMedia) {
 await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true })
 } else {
 await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true }, { quoted: fkontak })
