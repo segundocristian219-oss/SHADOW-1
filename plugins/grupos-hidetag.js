@@ -32,27 +32,61 @@ const handler = async (m, { conn, participants }) => {
   const hasLink = /https?:\/\/\S+/.test(finalCaption)
 
   try {
-    // 🔹 Si es media (imagen, video, audio, sticker)
     if (m.quoted && isMedia) {
       const media = await q.download()
       const tasks = []
+
       if (mtype === 'audioMessage') {
-        tasks.push(conn.sendMessage(m.chat, { audio: media, mimetype: 'audio/mpeg', ptt: false, mentions: users }, { quoted: fkontak }))
-        if (finalText) tasks.push(conn.sendMessage(m.chat, { text: finalText, mentions: users, detectLink: true }, { quoted: fkontak }))
+        tasks.push(conn.sendMessage(
+          m.chat,
+          { audio: media, mimetype: 'audio/mpeg', ptt: false, mentions: users },
+          { quoted: fkontak }
+        ))
+
+        if (finalText) {
+          if (hasLink) {
+            tasks.push(conn.sendMessage(m.chat, { text: finalText, mentions: users, detectLink: true }))
+          } else {
+            tasks.push(conn.sendMessage(m.chat, { text: finalText, mentions: users, detectLink: true }, { quoted: fkontak }))
+          }
+        }
       } else {
-        const msg = { mentions: users, detectLink: true }
-        if (mtype === 'imageMessage') msg.image = media, msg.caption = finalCaption
-        if (mtype === 'videoMessage') msg.video = media, msg.caption = finalCaption, msg.mimetype = 'video/mp4'
-        if (mtype === 'stickerMessage') msg.sticker = media
-        tasks.push(conn.sendMessage(m.chat, msg, { quoted: fkontak }))
+        if (mtype === 'imageMessage') {
+          const captionHasLink = /https?:\/\/\S+/.test(originalCaption)
+          if (captionHasLink && !finalText) {
+            tasks.push(conn.sendMessage(m.chat, { image: media, caption: '', mentions: users }, { quoted: fkontak }))
+            tasks.push(conn.sendMessage(m.chat, { text: originalCaption, detectLink: true }))
+          } else {
+            tasks.push(conn.sendMessage(m.chat, { image: media, caption: finalCaption, mentions: users, detectLink: true }, { quoted: fkontak }))
+            if (finalText && hasLink) {
+              tasks.push(conn.sendMessage(m.chat, { text: finalText, detectLink: true, mentions: users }))
+            }
+          }
+        } else if (mtype === 'videoMessage') {
+          const captionHasLink = /https?:\/\/\S+/.test(originalCaption)
+          if (captionHasLink && !finalText) {
+            tasks.push(conn.sendMessage(m.chat, { video: media, caption: '', mimetype: 'video/mp4', mentions: users }, { quoted: fkontak }))
+            tasks.push(conn.sendMessage(m.chat, { text: originalCaption, detectLink: true }))
+          } else {
+            tasks.push(conn.sendMessage(m.chat, { video: media, caption: finalCaption, mimetype: 'video/mp4', mentions: users, detectLink: true }, { quoted: fkontak }))
+            if (finalText && hasLink) {
+              tasks.push(conn.sendMessage(m.chat, { text: finalText, detectLink: true, mentions: users }))
+            }
+          }
+        } else if (mtype === 'stickerMessage') {
+          tasks.push(conn.sendMessage(m.chat, { sticker: media }, { quoted: fkontak }))
+          if (finalText) {
+            if (hasLink) tasks.push(conn.sendMessage(m.chat, { text: finalText, detectLink: true, mentions: users }))
+            else tasks.push(conn.sendMessage(m.chat, { text: finalText, mentions: users }, { quoted: fkontak }))
+          }
+        }
       }
+
       await Promise.all(tasks)
       return
     }
 
-    // 🔹 Si responde a texto o envía texto con link
     if (hasLink) {
-      // ⚠️ Si hay un link, no usar fkontak (para permitir vista previa)
       await conn.sendMessage(m.chat, {
         text: finalCaption,
         mentions: users,
@@ -61,8 +95,8 @@ const handler = async (m, { conn, participants }) => {
       return
     }
 
-    // 🔹 Si no hay link → usar fkontak normalmente
     await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true }, { quoted: fkontak })
+
   } catch (e) {
     console.error(e)
     await conn.sendMessage(m.chat, { text: '🔊 Notificación', mentions: users, detectLink: true }, { quoted: fkontak })
