@@ -1,4 +1,4 @@
-import { generateWAMessageFromContent } from '@whiskeysockets/baileys'
+import { generateWAMessageFromContent, downloadContentFromMessage } from '@whiskeysockets/baileys'
 
 const handler = async (m, { conn, participants }) => {
   if (!m.isGroup || m.key.fromMe) return
@@ -20,12 +20,11 @@ const handler = async (m, { conn, participants }) => {
 
   try {
     if (m.quoted && isMedia) {
-      // 📸 Si es imagen o video => reenviar para que diga "Reenviado"
       if (mtype === 'imageMessage' || mtype === 'videoMessage') {
-        const forward = generateWAMessageFromContent(m.chat, q.message, { userJid: conn.user.id })
-        await conn.relayMessage(m.chat, forward.message, { messageId: forward.key.id })
+        // 🔁 Reenviar imagen o video (mostrará "Reenviado")
+        await conn.copyNForward(m.chat, q, true)
       } else {
-        // 🎧 Audio o sticker => reenviar normal pero citando
+        // 🔊 Audio o sticker
         const media = await q.download()
         if (mtype === 'audioMessage') {
           await conn.sendMessage(m.chat, { audio: media, mimetype: 'audio/mpeg', ptt: false, mentions: users }, { quoted: q })
@@ -35,13 +34,12 @@ const handler = async (m, { conn, participants }) => {
         }
       }
     } else if (m.quoted && !isMedia) {
-      // 🗣️ Si es texto
+      // 💬 Texto citado
       await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true }, { quoted: q })
     } else if (!m.quoted && isMedia) {
-      // 🖼️ Si el mensaje original es media (no citado)
       if (mtype === 'imageMessage' || mtype === 'videoMessage') {
-        const forward = generateWAMessageFromContent(m.chat, m.message, { userJid: conn.user.id })
-        await conn.relayMessage(m.chat, forward.message, { messageId: forward.key.id })
+        // 🔁 Reenviar imagen/video enviado directamente
+        await conn.copyNForward(m.chat, m, true)
       } else {
         const media = await m.download()
         if (mtype === 'audioMessage') {
@@ -52,7 +50,7 @@ const handler = async (m, { conn, participants }) => {
         }
       }
     } else {
-      // 💬 Si es texto sin citar nada
+      // ✉️ Texto sin citar nada
       await conn.sendMessage(m.chat, { text: finalCaption, mentions: users, detectLink: true }, { quoted: m })
     }
   } catch (e) {
