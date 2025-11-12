@@ -1,13 +1,33 @@
-var handler = async (m, { conn, args }) => {
+const handler = async (msg, { conn }) => {
+  const chatId = msg.key.remoteJid;
 
-let group = m.chat
-let link = 'https://chat.whatsapp.com/' + await conn.groupInviteCode(group)
-conn.reply(m.chat, '' + link, m, { detectLink: true })
+  if (!chatId.endsWith("@g.us")) {
+    return conn.sendMessage(chatId, {
+      text: "❌ Este comando solo funciona en grupos."
+    }, { quoted: msg });
+  }
 
-}
-handler.help = ['link']
-handler.tags = ['grupo']
-handler.command = ['link', 'enlace']
-handler.group = true
+  try {
+    const code = await conn.groupInviteCode(chatId);
+    const link = `https://chat.whatsapp.com/${code}`;
 
-export default handler
+    // 📎 Enviar el link plano para que cargue la vista previa
+    await conn.sendMessage(chatId, {
+      text: `${link}`
+    }, { quoted: msg, linkPreview: true });
+
+    await conn.sendMessage(chatId, {
+      react: { text: "🔗", key: msg.key }
+    });
+
+  } catch (e) {
+    console.error("❌ Error al obtener link del grupo:", e);
+    await conn.sendMessage(chatId, {
+      text: "⚠️ No se pudo obtener el enlace del grupo. Asegúrate que el bot sea admin."
+    }, { quoted: msg });
+  }
+};
+
+handler.customPrefix = /^\.?(link)$/i;
+handler.command = new RegExp();
+export default handler;
