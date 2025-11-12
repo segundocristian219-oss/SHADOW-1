@@ -385,42 +385,22 @@ console.log(m.message)
 
 global.dfail = (type, m, conn) => {
 const msg = {
-rowner: `┏━━━✦☆✦━━━┓
-🌙  El conjuro *${comando}*  
-solo lo puede usar mi amo supremo.  
-(ノಠ益ಠ)ノ彡✧
-┗━━━✦☆✦━━━┛`,
+rowner: `l`,
 
-owner: `╔═══ ❖ ═══╗
-🔮 El hechizo *${comando}*  
-pertenece a los guardianes mayores.  
-ヽ(>∀<☆)ノ
-╚═══ ❖ ═══╝`,
+owner: `o`,
 
-mods: `｡☆✼★━━━━★✼☆｡
-☁️ El poder de *${comando}*  
-está reservado a los moderadores mágicos.
-(｡•́︿•̀｡)
-｡☆✼★━━━━★✼☆｡`,
+mods: `ñ`,
 
-premium: `✧･ﾟ: *${comando}* ✧･ﾟ:
-💎 Solo los bendecidos premium  
-pueden tocar este tesoro UwU
-⊂(￣▽￣)⊃`,
+premium: `kk`,
 
-group: `┏(＾0＾)┛
-🏮 El ritual *${comando}*  
-sólo funciona en salones grupales.
-┗(＾0＾) ┓`,
+group: `kdodo`,
 
 private: `╭(♡･ㅂ･)و ̑̑
 📜 El conjuro *${comando}*  
 sólo se revela en privado conmigo.
 ╰(°▽°)╯`,
 
-admin: `( ⚆ _ ⚆ )  
-📛 El talismán *${comando}*  
-requiere la fuerza de un admin.`,
+admin: `izk`,
 
 botAdmin: `╰(⇀︿⇀)つ-]═──
 🤖 Para usar *${comando}*  
@@ -430,8 +410,7 @@ unreg: `｡･ﾟﾟ*(>д<)*ﾟﾟ･｡
 No estás en el libro sagrado aún!
 Regístrate con: *${usedPrefix}reg ${user2}.18*`,
 
-restrict: `🚪 Esta puerta secreta  
-está cerrada por órdenes del creador.`
+restrict: `olsm`
 
 }[type]
 if (msg) return conn.reply(m.chat, msg, m, rcanal).then(_ => m.react('✖️'))
