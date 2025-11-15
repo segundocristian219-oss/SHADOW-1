@@ -11,9 +11,9 @@ if (!fs.existsSync(tempFolder)) fs.mkdirSync(tempFolder, { recursive: true });
 const handler = async (msg, { conn }) => {
   const chatId = msg.key.remoteJid;
   const pref = global.prefixes?.[0] || ".";
+  const rcanal = { contextInfo: { forwardingScore: 999, isForwarded: true } }
 
   try {
-    // 1. Buscar media en el mensaje directo
     let quoted = null;
     let mediaType = null;
 
@@ -25,7 +25,6 @@ const handler = async (msg, { conn }) => {
       mediaType = "video";
     }
 
-    // 2. Si no hay media directa, revisar si hay quoted
     if (!quoted) {
       const q = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
       if (q?.imageMessage) {
@@ -38,14 +37,16 @@ const handler = async (msg, { conn }) => {
     }
 
     if (!quoted || !mediaType) {
-      return await conn.sendMessage(chatId, {
-        text: `𝖱𝖾𝗌𝗉𝗈𝗇𝖽𝖾 𝖠 𝖴𝗇𝖺 𝖨𝗆𝖺𝗀𝖾𝗇 𝖮 𝖵𝗂𝖽𝖾𝗈 𝖯𝖺𝗋𝖺 𝖢𝗋𝖾𝖺𝗋 𝖤𝗅 𝖲𝗍𝗂𝖼𝗄𝖾𝗋 🏞️`
-      }, { quoted: msg });
+      return conn.reply(
+        chatId,
+        `𝖱𝖾𝗌𝗉𝗈𝗇𝖽𝖾 𝖠 𝖴𝗇𝖺 𝖨𝗆𝖺𝗀𝖾𝗇 𝖮 𝖵𝗂𝖽𝖾𝗈 𝖯𝖺𝗋𝖺 𝖢𝗋𝖾𝖺𝗋 𝖤𝗅 𝖲𝗍𝗂𝖼𝗄𝖾𝗋 🏞️`,
+        msg,
+        rcanal
+      ).then(_ => conn.sendMessage(chatId, { react: { text: '✖️', key: msg.key } }));
     }
 
     await conn.sendMessage(chatId, { react: { text: '🛠️', key: msg.key } });
 
-    // Descargar media
     const mediaStream = await downloadContentFromMessage(
       quoted[`${mediaType}Message`],
       mediaType
@@ -59,14 +60,23 @@ const handler = async (msg, { conn }) => {
       ? await writeExifImg(buffer, metadata)
       : await writeExifVid(buffer, metadata);
 
-    await conn.sendMessage(chatId, { sticker: { url: sticker } }, { quoted: msg });
+    await conn.sendMessage(
+      chatId,
+      { sticker: { url: sticker }, ...rcanal },
+      { quoted: msg }
+    );
 
     await conn.sendMessage(chatId, { react: { text: '✅', key: msg.key } });
 
   } catch (err) {
     console.error('❌ Error en sticker s:', err);
-    await conn.sendMessage(chatId, { text: '❌ *Hubo un error al procesar el sticker.*' }, { quoted: msg });
-    await conn.sendMessage(chatId, { react: { text: '❌', key: msg.key } });
+
+    await conn.reply(
+      chatId,
+      '❌ *Hubo un error al procesar el sticker.*',
+      msg,
+      rcanal
+    ).then(_ => conn.sendMessage(chatId, { react: { text: '❌', key: msg.key } }));
   }
 };
 
@@ -74,7 +84,6 @@ handler.customPrefix = /^(\.s|s)$/i
 handler.command = new RegExp
 export default handler;
 
-// === FUNCIONES AUXILIARES ===
 function randomFileName(ext) {
   return `${Crypto.randomBytes(6).readUIntLE(0, 6).toString(36)}.${ext}`;
 }
