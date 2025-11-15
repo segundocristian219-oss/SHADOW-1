@@ -60,9 +60,15 @@ ${cmds.map(cmd => `│ ▪️ ${cmd}`).join('\n')}
       video: { url: "https://cdn.russellxz.click/a1fe9136.mp4" },
       caption: menuText,
       gifPlayback: true,
-      ...global.rcanal,
+
+      // ← AQUÍ SE APLICA CORRECTAMENTE global.rcanal
+      ...(global.rcanal || {}),
+
       contextInfo: {
-        mentionedJid: [userId]   // ←★ AQUÍ LA MENCIÓN REAL ★
+        ...(global.rcanal?.contextInfo || {}),
+
+        // ← AQUÍ SE AÑADE LA MENCIÓN REAL
+        mentionedJid: [userId]
       }
     },
     { quoted: m }
