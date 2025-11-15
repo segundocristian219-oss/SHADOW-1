@@ -1,27 +1,22 @@
 import fs from 'fs'
 
-let handler = async (m, { conn, args }) => {
+let handler = async (m, { conn }) => {
+
   let userId = m.mentionedJid?.[0] || m.sender
   let name = await conn.getName(userId)
 
-  let _uptime = process.uptime() * 1000
-  let uptime = clockString(_uptime)
+  let uptime = clockString(process.uptime() * 1000)
 
-  let hour = new Intl.DateTimeFormat('es-PE', {
-    hour: 'numeric',
-    hour12: false,
-    timeZone: 'America/Lima'
-  }).format(new Date())
-
+  let hour = new Date().getHours()
   let saludo =
     hour < 4  ? "🌌 Aún es de madrugada..." :
     hour < 7  ? "🌅 El amanecer despierta..." :
     hour < 12 ? "🌞 Buenos días..." :
-    hour < 14 ? "🍽️ Hora del mediodía..." :
+    hour < 14 ? "🍽️ Es mediodía..." :
     hour < 18 ? "🌄 Buenas tardes..." :
     hour < 20 ? "🌇 El atardecer pinta el cielo..." :
     hour < 23 ? "🌃 Buenas noches..." :
-                "🌑 Medianoche... 👀"
+                "🌑 Medianoche..."
 
   let categories = {}
   for (let plugin of Object.values(global.plugins)) {
@@ -38,25 +33,27 @@ Bienvenido al menú de *Baki-Bot IA*
 ☀︎ Tiempo observándote: ${uptime}
 
 ${saludo}
+
+──────────────
 `
 
   for (let [tag, cmds] of Object.entries(categories)) {
-    let tagName = tag.toUpperCase().replace(/_/g, ' ')
+    let t = tag.toUpperCase().replace(/_/g, ' ')
     menuText += `
-
-╭━ ${tagName} ━╮
-${cmds.map(cmd => `│ ▪️ ${cmd}`).join('\n')}
-╰──────────────╯`
+╭━ ${t} ━╮
+${cmds.map(a => `│ ▪️ ${a}`).join("\n")}
+╰──────────╯`
   }
 
+  // ORDEN CORRECTO PARA DS6
   await conn.sendMessage(
     m.chat,
     {
+      ...global.rcanal,           // 🔥 debe ir de primeras
       video: { url: "https://cdn.russellxz.click/a1fe9136.mp4" },
-      caption: menuText,
       gifPlayback: true,
-      mentions: [userId],
-      ...global.rcanal
+      caption: menuText,
+      mentions: [userId]         // 🔥 esto activa la mención como la segunda captura
     },
     { quoted: m }
   )
