@@ -13,10 +13,10 @@ const handler = async (msg, { conn }) => {
   const pref = global.prefixes?.[0] || ".";
 
   try {
-    // 1. Buscar media en el mensaje directo
     let quoted = null;
     let mediaType = null;
 
+    // Media directa
     if (msg.message?.imageMessage) {
       quoted = msg.message;
       mediaType = "image";
@@ -25,7 +25,7 @@ const handler = async (msg, { conn }) => {
       mediaType = "video";
     }
 
-    // 2. Si no hay media directa, revisar si hay quoted
+    // Media citada
     if (!quoted) {
       const q = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
       if (q?.imageMessage) {
@@ -38,9 +38,11 @@ const handler = async (msg, { conn }) => {
     }
 
     if (!quoted || !mediaType) {
-      return await conn.sendMessage(chatId, {
-        text: `☁️ Responde a una *imagen* o *video* para crear el sticker`
-      }, { quoted: msg });
+      return await conn.sendMessage(
+        chatId,
+        { text: `☁️ Responde a una *imagen* o *video* para crear el sticker`, ...global.rcanal },
+        { quoted: msg }
+      );
     }
 
     await conn.sendMessage(chatId, { react: { text: '🛠️', key: msg.key } });
@@ -59,13 +61,24 @@ const handler = async (msg, { conn }) => {
       ? await writeExifImg(buffer, metadata)
       : await writeExifVid(buffer, metadata);
 
-    await conn.sendMessage(chatId, { sticker: { url: sticker } }, { quoted: msg });
+    // === AQUI SE AGREGA global.rcanal ===
+    await conn.sendMessage(
+      chatId,
+      { sticker: { url: sticker }, ...global.rcanal },
+      { quoted: msg }
+    );
 
     await conn.sendMessage(chatId, { react: { text: '✅', key: msg.key } });
 
   } catch (err) {
     console.error('❌ Error en sticker s:', err);
-    await conn.sendMessage(chatId, { text: '❌ *Hubo un error al procesar el sticker.*' }, { quoted: msg });
+
+    await conn.sendMessage(
+      chatId,
+      { text: '❌ *Hubo un error al procesar el sticker.*', ...global.rcanal },
+      { quoted: msg }
+    );
+
     await conn.sendMessage(chatId, { react: { text: '❌', key: msg.key } });
   }
 };
@@ -73,6 +86,7 @@ const handler = async (msg, { conn }) => {
 handler.customPrefix = /^(\.s|s)$/i
 handler.command = new RegExp
 export default handler;
+
 
 // === FUNCIONES AUXILIARES ===
 function randomFileName(ext) {
@@ -161,6 +175,7 @@ async function addExif(webpBuffer, metadata) {
     0x00, 0x00, 0x16, 0x00,
     0x00, 0x00
   ]);
+
   const jsonBuff = Buffer.from(JSON.stringify(json), "utf-8");
   const exif = Buffer.concat([exifAttr, jsonBuff]);
   exif.writeUIntLE(jsonBuff.length, 14, 4);
