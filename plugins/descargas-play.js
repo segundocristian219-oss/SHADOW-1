@@ -130,3 +130,309 @@ async function prepareFormats(videoUrl, id) {
     } catch {}
   }
 }
+async function sendFile(conn, chatId, filePath, title, asDocument, type, quoted) {
+  if (!fs.existsSync(filePath)) return
+
+  const buffer = fs.readFileSync(filePath)
+  const mimetype = type === "audio" ? "audio/mpeg" : "video/mp4"
+  const fileName = `${title}.${type === "audio" ? "mp3" : "mp4"}`
+
+  await conn.sendMessage(
+    chatId,
+    {
+      [asDocument ? "document" : type]: buffer,
+      mimetype,
+      fileName
+    },
+    { quoted }
+  )
+}
+
+async function handleDownload(conn, job, choice) {
+  const mapping = {
+    "👍": "audio",
+    "❤️": "video",
+    "📄": "audioDoc",
+    "📁": "videoDoc"
+  }
+
+  const key = mapping[choice]
+  if (!key) return
+
+  const isDoc = key.endsWith("Doc")
+  const type = key.startsWith("audio") ? "audio" : "video"
+
+  let filePath
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const cached = cache[job.commandMsg.key.id]?.files?.[key]
+
+      if (cached && fs.existsSync(cached)) {
+        const size = fileSizeMB(cached).toFixed(1)
+
+        await conn.sendMessage(
+          job.chatId,
+          {
+            text: `⚡ Enviando ${type} (${size} MB)`
+          },
+          { quoted: job.commandMsg }
+        )
+
+        return await sendFile(
+          conn,
+          job.chatId,
+          cached,
+          job.title,
+          isDoc,
+          type,
+          job.commandMsg
+        )
+      }
+
+      await conn.sendMessage(
+        job.chatId,
+        { text: `⏳ Preparando ${type}...` },
+        { quoted: job.commandMsg }
+      )
+
+      const mediaUrl = await skyRequest(job.videoUrl, type)
+      if (!mediaUrl) throw new Error("No se obtuvo enlace válido")
+
+      const ext = type === "audio" ? "mp3" : "mp4"
+      const unique = crypto.randomUUID()
+      const inFile = path.join(TMP_DIR, `${unique}_in.${ext}`)
+
+      filePath = inFile
+
+      await queueDownload(() => downloadToFile(mediaUrl, inFile))
+
+      if (type === "audio" && path.extname(inFile) !== ".mp3") {
+        filePath = await convertToMp3(inFile)
+      }
+
+      const sizeMB = fileSizeMB(filePath)
+      if (sizeMB > 100) {
+        throw new Error(`Archivo demasiado grande (${sizeMB.toFixed(1)}MB)`)
+      }
+
+      return await sendFile(
+        conn,
+        job.chatId,
+        filePath,
+        job.title,
+        isDoc,
+        type,
+        job.commandMsg
+      )
+    } catch (err) {
+      if (attempt === 2) {
+        await conn.sendMessage(
+          job.chatId,
+          { text: `❌ Error: ${err.message}` },
+          { quoted: job.commandMsg }
+        )
+      }
+    } finally {
+      safeUnlink(filePath)
+    }
+  }
+}
+const handler = async (msg, { conn, text, command }) => {
+  const pref = global.prefixes?.[0] || "."
+
+  if (command === "clean") {
+    const files = fs.readdirSync(TMP_DIR).map(f => path.join(TMP_DIR, f))
+    let total = 0
+
+    for (const f of files) {
+      try {
+        total += fs.statSync(f).size
+        fs.unlinkSync(f)
+      } catch {}
+    }
+
+    return conn.sendMessage(
+      msg.chat,
+      {
+        text:
+          `🧹 Limpieza completada\n` +
+          `Archivos eliminados: ${files.length}\n` +
+          `Espacio liberado: ${(total / 1024 / 1024).toFixed(2)} MB`
+      },
+      { quoted: msg }
+    )
+  }
+
+  if (!text?.trim()) {
+    return conn.sendMessage(
+      msg.key.remoteJid,
+      {
+        text:
+          `✳️ Usa:\n${pref}play <término>\n` +
+          `Ej: *${pref}play* bad bunny diles`
+      },
+      { quoted: msg }
+    )
+  }
+
+  await conn.sendMessage(msg.key.remoteJid, {
+    react: { text: "⏳", key: msg.key }
+  })
+
+  let res
+  try {
+    res = await yts(text)
+  } catch {
+    return conn.sendMessage(
+      msg.key.remoteJid,
+      { text: "❌ Error al buscar video." },
+      { quoted: msg }
+    )
+  }
+
+  const video = res.videos?.[0]
+  if (!video) {
+    return conn.sendMessage(
+      msg.key.remoteJid,
+      { text: "❌ Sin resultados." },
+      { quoted: msg }
+    )
+  }
+
+  const { url: videoUrl, title, timestamp: duration, views, author, thumbnail } =
+    video
+
+  const caption =
+    `𝚂𝚄𝙿𝙴𝚁 𝙿𝙻𝙰𝚈 🎵\n\n` +
+    `Título: ${title}\n` +
+    `🕑 Duración: ${duration}\n` +
+    `👁️‍🗨️ Vistas: ${views?.toLocaleString()}\n` +
+    `🎤 Artista: ${author?.name}\n\n` +
+    `Elige qué quieres descargar:\n\n` +
+    `👍 Audio (MP3)\n❤️ Video (MP4)\n📄 Audio Documento\n📁 Video Documento`
+
+  const sent = await conn.sendMessage(
+    msg.chat,
+    {
+      image: { url: thumbnail },
+      caption
+    },
+    { quoted: msg }
+  )
+
+  const job = {
+    chatId: msg.chat,
+    commandMsg: msg,
+    videoUrl,
+    title
+  }
+
+  pending[sent.key.id] = job
+
+  cache[msg.key.id] = {
+    timestamp: Date.now(),
+    files: {}
+  }
+
+  prepareFormats(videoUrl, msg.key.id).catch(() => {})
+}
+
+handler.before = async (msg, { conn }) => {
+  if (!msg?.message?.reactionMessage) return
+  const key = msg.message.reactionMessage.key?.id
+  const emoji = msg.message.reactionMessage.text
+  const job = pending[key]
+  if (!job) return
+  delete pending[key]
+  handleDownload(conn, job, emoji)
+}
+
+handler.command = ["play","clean"]
+export default handler
+
+const MAX_TMP_FILES = 300
+const MAX_TMP_SIZE_MB = 2000
+const FILE_EXPIRATION = 20 * 24 * 60 * 60 * 1000
+
+function isFileInUse(filePath) {
+  try {
+    const fd = fs.openSync(filePath, "r+")
+    fs.closeSync(fd)
+    return false
+  } catch {
+        return true
+  }
+}
+
+function getDirSize(files) {
+  let total = 0
+  for (const f of files) {
+    try { total += fs.statSync(f).size } catch {}
+  }
+  return total
+}
+
+function cleanupTmp() {
+  try {
+    if (!fs.existsSync(TMP_DIR)) return
+
+    let files = fs.readdirSync(TMP_DIR).map(f => path.join(TMP_DIR, f))
+    const now = Date.now()
+    let deleted = 0
+    let freed = 0
+
+    files.sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs)
+
+    for (const file of files) {
+      try {
+        const stats = fs.statSync(file)
+
+        if (isFileInUse(file)) continue
+
+        if (stats.size < 100 * 1024) {
+          freed += stats.size
+          fs.unlinkSync(file)
+          deleted++
+          continue
+        }
+
+        if (now - stats.mtimeMs > FILE_EXPIRATION) {
+          freed += stats.size
+          fs.unlinkSync(file)
+          deleted++
+          continue
+        }
+      } catch {}
+    }
+
+    files = fs.readdirSync(TMP_DIR).map(f => path.join(TMP_DIR, f))
+    files.sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs)
+
+    let totalMB = getDirSize(files) / (1024 * 1024)
+
+    for (const file of files) {
+      if (totalMB <= MAX_TMP_SIZE_MB && files.length <= MAX_TMP_FILES) break
+
+      try {
+        if (isFileInUse(file)) continue
+
+        const size = fs.statSync(file).size
+        fs.unlinkSync(file)
+
+        totalMB -= size / (1024 * 1024)
+        deleted++
+        freed += size
+      } catch {}
+    }
+
+    if (deleted > 0) {
+      console.log(`🧹 Limpieza PRO → Eliminados: ${deleted}, Liberado: ${(freed / 1024 / 1024).toFixed(2)} MB`)
+    }
+
+  } catch (err) {
+    console.log("⚠ Error en limpieza TMP:", err.message)
+  }
+}
+
+setInterval(() => setTimeout(cleanupTmp, 0), 30 * 60 * 1000)
