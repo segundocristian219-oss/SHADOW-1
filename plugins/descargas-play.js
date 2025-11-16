@@ -243,3 +243,114 @@ async function handleDownload(conn, job, choice) {
     }
   }
 }
+const handler = async (msg, { conn, text, command }) => {
+  const pref = global.prefixes?.[0] || "."
+
+  if (command === "clean") {
+    const files = fs.readdirSync(TMP_DIR).map(f => path.join(TMP_DIR, f))
+    let total = 0
+
+    for (const f of files) {
+      try {
+        total += fs.statSync(f).size
+        fs.unlinkSync(f)
+      } catch {}
+    }
+
+    return conn.sendMessage(
+      msg.chat,
+      {
+        text:
+          `🧹 Limpieza completada\n` +
+          `Archivos eliminados: ${files.length}\n` +
+          `Espacio liberado: ${(total / 1024 / 1024).toFixed(2)} MB`
+      },
+      { quoted: msg }
+    )
+  }
+
+  if (!text?.trim()) {
+    return conn.sendMessage(
+      msg.key.remoteJid,
+      {
+        text:
+          `✳️ Usa:\n${pref}play <término>\n` +
+          `Ej: *${pref}play* bad bunny diles`
+      },
+      { quoted: msg }
+    )
+  }
+
+  await conn.sendMessage(msg.key.remoteJid, {
+    react: { text: "⏳", key: msg.key }
+  })
+
+  let res
+  try {
+    res = await yts(text)
+  } catch {
+    return conn.sendMessage(
+      msg.key.remoteJid,
+      { text: "❌ Error al buscar video." },
+      { quoted: msg }
+    )
+  }
+
+  const video = res.videos?.[0]
+  if (!video) {
+    return conn.sendMessage(
+      msg.key.remoteJid,
+      { text: "❌ Sin resultados." },
+      { quoted: msg }
+    )
+  }
+
+  const { url: videoUrl, title, timestamp: duration, views, author, thumbnail } =
+    video
+
+  const caption =
+    `𝚂𝚄𝙿𝙴𝚁 𝙿𝙻𝙰𝚈 🎵\n\n` +
+    `Título: ${title}\n` +
+    `🕑 Duración: ${duration}\n` +
+    `👁️‍🗨️ Vistas: ${views?.toLocaleString()}\n` +
+    `🎤 Artista: ${author?.name}\n\n` +
+    `Elige qué quieres descargar:\n\n` +
+    `👍 Audio (MP3)\n❤️ Video (MP4)\n📄 Audio Documento\n📁 Video Documento`
+
+  const sent = await conn.sendMessage(
+    msg.chat,
+    {
+      image: { url: thumbnail },
+      caption
+    },
+    { quoted: msg }
+  )
+
+  const job = {
+    chatId: msg.chat,
+    commandMsg: msg,
+    videoUrl,
+    title
+  }
+
+  pending[sent.key.id] = job
+
+  cache[msg.key.id] = {
+    timestamp: Date.now(),
+    files: {}
+  }
+
+  prepareFormats(videoUrl, msg.key.id).catch(() => {})
+}
+
+handler.before = async (msg, { conn }) => {
+  if (!msg?.message?.reactionMessage) return
+  const key = msg.message.reactionMessage.key?.id
+  const emoji = msg.message.reactionMessage.text
+  const job = pending[key]
+  if (!job) return
+  delete pending[key]
+  handleDownload(conn, job, emoji)
+}
+
+export default handler
