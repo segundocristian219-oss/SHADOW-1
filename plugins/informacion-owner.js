@@ -25,7 +25,7 @@ let handler = async (m, { conn }) => {
     {
       name: '𝖠𝗇𝗀𝖾𝗅',
       desc: '𝖴𝗇𝗈 𝖣𝖾 𝖫𝗈𝗌 𝖨𝗇𝗏𝖾𝗋𝗌𝗂𝗈𝗇𝗂𝗌𝗍𝖺𝗌 𝖯𝗋𝗂𝗇𝖼𝗂𝗉𝖺𝗅𝖾𝗌 🗣️',
-      image: 'https://cdn.russellxz.click/54ba5eb9.jpeg',
+      image: 'https://cdn.russellxz.click/295d5247.jpeg',
       buttons: [
         { name: 'WhatsApp', url: 'https://wa.me/27635180621' }
       ]
