@@ -45,7 +45,7 @@ let handler = async (m, { conn, args }) => {
 
   // === MENÚ ===
   let menuText = `
-📆 *${week}, ${date}*
+📆  \`\`\`${week}, ${date}\`\`\`
 ⏰ *Hora CDMX:* ${hourNow}
 
 👋🏻 𝖧𝗈𝗅𝖺 @${userId.split('@')[0]}  
