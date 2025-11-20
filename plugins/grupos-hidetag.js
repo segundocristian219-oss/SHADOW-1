@@ -2,7 +2,7 @@ import { generateWAMessageFromContent } from '@whiskeysockets/baileys'
 import fetch from 'node-fetch'
 
 let thumb
-fetch('https://i.postimg.cc/rFfVL8Ps/image.jpg')
+fetch('https://cdn.russellxz.click/24a3b428.jpeg')
   .then(r => r.arrayBuffer())
   .then(buf => thumb = Buffer.from(buf))
   .catch(() => thumb = null)
