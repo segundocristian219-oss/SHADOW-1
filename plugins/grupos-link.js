@@ -76,4 +76,7 @@ const handler = async (msg, { conn }) => {
 };
 
 handler.command = ["link"];
+handler.group = true
+handler.admin = true
+
 export default handler;
