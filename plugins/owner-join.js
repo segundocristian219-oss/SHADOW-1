@@ -79,22 +79,28 @@ const gemini = {
 
 const sessions = {};
 
+
 // ---------------- HANDLER PRINCIPAL ------------------
 
-let handler = async (m, { text, conn }) => {
+let handler = async (m, { conn }) => {
 
-  // ✔ NUEVA DETECCIÓN DE MENCIONES REAL EN DS6
+  // ✔ OBTENEMOS EL JID REAL DEL BOT (DS6 usa conn.user.id)
+  const botJid = conn.user?.id || conn.user?.jid;
+
+  // ✔ Detecta mención REAL
   const mentions = m.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-  const isTagged = mentions.includes(conn.user.jid);
+  const isTagged = mentions.includes(botJid);
 
-  // ✔ DETECTA COMANDO .bot / .gemini
-  const isCommand = /^[\.]?(bot|gemini)/i.test(m.text);
+  // ✔ Detecta comandos .bot o .gemini
+  const isCommand = /^[\.]?(bot|gemini)\b/i.test(m.text);
 
+  // Si no es mención ni comando → no responde
   if (!isTagged && !isCommand) return;
 
+  // Limpieza de texto
   let query = m.text
-    .replace(new RegExp(`@${conn.user.jid.split('@')[0]}`, 'i'), '')
-    .replace(/^[\.]?(bot|gemini)\s*/i, '')
+    .replace(new RegExp(`@${botJid.split('@')[0]}`, 'g'), '') // limpia mención real
+    .replace(/^[\.]?(bot|gemini)\b/i, '')                      // limpia comando
     .trim();
 
   if (!query) return m.reply("Hola 🩵 ¿qué necesitas?");
@@ -102,19 +108,21 @@ let handler = async (m, { text, conn }) => {
   try {
     await conn.sendPresenceUpdate("composing", m.chat);
 
-    const prev = sessions[m.sender];
-    const result = await gemini.ask(query, prev);
+    const prevId = sessions[m.sender];
+    const result = await gemini.ask(query, prevId);
 
     sessions[m.sender] = result.id;
 
     await m.reply(result.text);
+
   } catch (e) {
     console.log(e);
     await m.reply("❌ Error al procesar con Gemini.");
   }
 };
 
-handler.customPrefix = /^(\.?bot|\.?gemini|@\d+)/i;
+handler.customPrefix = /^(\.?bot|\.?gemini)/i;
 handler.command = new RegExp;
 handler.tags = ["ai"];
+
 export default handler;
