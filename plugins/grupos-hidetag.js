@@ -2,7 +2,6 @@ import { generateWAMessageFromContent } from '@whiskeysockets/baileys'
 import fetch from 'node-fetch'
 
 let thumb = null
-// Carga thumbnail asíncrono no bloqueante
 fetch('https://cdn.russellxz.click/920fd46e.jpeg')
   .then(r => r.arrayBuffer())
   .then(buf => thumb = Buffer.from(buf))
@@ -42,7 +41,6 @@ const handler = async (m, { conn, participants }) => {
   const finalCaption = userText || originalCaption || '🔊 Notificación'
 
   try {
-    // --- 1) Media citada o propia
     if (isMedia) {
       const media = await q.download()
       const msg = { mentions: users }
@@ -73,7 +71,6 @@ const handler = async (m, { conn, participants }) => {
       return await conn.sendMessage(m.chat, msg, { quoted: fkontak })
     }
 
-    // --- 2) Texto citado → reenviar modificado
     if (m.quoted && !isMedia) {
       const newMsg = conn.cMod(
         m.chat,
@@ -93,7 +90,6 @@ const handler = async (m, { conn, participants }) => {
       return await conn.relayMessage(m.chat, newMsg.message, { messageId: newMsg.key.id })
     }
 
-    // --- 3) Solo texto normal
     return await conn.sendMessage(
       m.chat,
       { text: finalCaption, mentions: users },
