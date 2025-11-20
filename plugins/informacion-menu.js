@@ -39,6 +39,7 @@ ${hourNow} 𝖬𝖾𝗑𝗂𝖼𝗈 𝖢𝗂𝗍𝗒\`\`\`
 𝖳𝗂𝖾𝗆𝗉𝗈 𝖰𝗎𝖾 𝖤𝗁 𝖤𝗌𝗍𝖺𝖽𝗈 𝖠𝖼𝗍𝗂𝗏𝗈: ${uptime} 🏞️
 `.trim()
 
+
   // 👉 Se eliminó emojiRandom y deco
   for (let [tag, cmds] of Object.entries(categories)) {
     let tagName = tag.toUpperCase().replace(/_/g, ' ')
@@ -46,7 +47,7 @@ ${hourNow} 𝖬𝖾𝗑𝗂𝖼𝗈 𝖢𝗂𝗍𝗒\`\`\`
 
 ╭─── ${tagName} ──╮
 ${cmds.map(cmd => `⭒ ִֶָ७ ꯭🍄˙⋆｡ - ${cmd}`).join('\n')}
-╰─────────────╯`
+╰──────────╯`
   }
 
   await conn.sendMessage(
