@@ -115,6 +115,9 @@ const mutedList = mutedData[m.chat]
 if (mutedList && mutedList.includes(m.sender)) return !1
 }
 
+handler.help = ["𝖴𝗇𝗆𝗎𝗍𝖾"];
+handler.help = ["𝖬𝗎𝗍𝖾"];
+handler.tags = ["𝖦𝖱𝖴𝖯𝖮𝖲"];
 handler.command = /^(mute|unmute)$/i
 handler.group = true
 handler.admin = true
