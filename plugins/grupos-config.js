@@ -24,6 +24,8 @@ await conn.groupSettingUpdate(m.chat, isClose)
 await conn.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
 }
 
+handler.help = ["𝖠𝖻𝗋𝗂𝗋 𝖢𝖾𝗋𝗋𝖺𝗋"];
+handler.tags = ["𝖦𝖱𝖴𝖯𝖮𝖲"];
 handler.customPrefix = /^(?:\.?grupo\s(?:abrir|cerrar|open|close)|\.?(?:abrir|cerrar|open|close))$/i;
 handler.command = new RegExp();
 handler.group = true;
