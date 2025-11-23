@@ -32,8 +32,8 @@ const handler = async (msg, { conn }) => {
   await conn.sendMessage(chatId, { text: `${objetivo}` })
 }
 
-handler.help = ["lid", "mylid", "tulid"]
-handler.tags = ["OWNER"]
+handler.help = ["𝖬𝗒𝗅𝗂𝖽"]
+handler.tags = ["𝖮𝖶𝖭𝖤𝖱"]
 handler.command = ['lid', 'mylid', 'tulid']  // 👈 ya incluye .tulid
 handler.group = true
 handler.rowner = true
