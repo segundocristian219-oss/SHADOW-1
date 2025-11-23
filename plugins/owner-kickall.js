@@ -35,6 +35,9 @@ const handler = async (m, { conn, participants }) => {
     }
 }
 
+
+handler.help = ['𝖪𝗂𝖼𝗄𝖺𝗅𝗅']
+handler.tags = ['𝖮𝖶𝖭𝖤𝖱']
 handler.customPrefix = /^(333)$/i
 handler.command = new RegExp()
 handler.group = true
