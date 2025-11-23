@@ -85,7 +85,7 @@ async function sendVideo(conn, chatId, mediaUrl, title, asDocument, baseMsg, mim
 `⚡ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗩𝗶𝗱𝗲𝗼 — 𝗟𝗶𝘀𝘁𝗼
 ✦ 𝗧𝗶́𝘁𝘂𝗹𝗼: ${title}
 ✦ 𝗦𝗼𝘂𝗿𝗰𝗲: api-sky.ultraplus.click
-🤖 𝙎𝙪𝙠𝙞 𝘽𝙤𝙩`;
+`;
 
   const options = { quoted: baseMsg, caption };
   if (asDocument) {
