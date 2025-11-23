@@ -53,8 +53,16 @@ async function convertToMp3(inputFile, metadata){
   )
   safeUnlink(inputFile)
 
-  // Agregar metadatos ID3
-  if(metadata) NodeID3.update(metadata, outFile)
+  // Validar metadata antes de pasar a NodeID3
+  if(metadata){
+    const safeMeta = {
+      title: metadata.title || "Desconocido",
+      artist: metadata.artist || "Desconocido",
+      APIC: metadata.APIC || undefined
+    }
+    NodeID3.update(safeMeta, outFile)
+  }
+
   return outFile
 }
 
@@ -88,7 +96,9 @@ async function handlePlay(conn, chatId, text, quoted){
     await downloadFile(mediaUrl, tempFile)
 
     const mp3File = await convertToMp3(tempFile, {
-      title, artist, APIC: thumbnail
+      title, 
+      artist, 
+      APIC: thumbnail
     })
 
     if(fileSizeMB(mp3File) > MAX_FILE_MB) throw new Error("Archivo muy grande")
