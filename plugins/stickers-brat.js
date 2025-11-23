@@ -45,6 +45,7 @@ const handler = async (m, { conn, text }) => {
   }
 };
 
+handler.help = ["𝖡𝗋𝖺𝗍 <𝖳𝖾𝗑𝗍𝗈>"]
+handler.tags = ["𝖲𝖳𝖨𝖢𝖪𝖤𝖱𝖲"]
 handler.command = /^brat$/i;
-
 export default handler;
