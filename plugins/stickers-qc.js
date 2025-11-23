@@ -184,7 +184,7 @@ const handler = async (m, { conn, args }) => {
   }
 }
 
-handler.help = ['𝖰𝖼']
+handler.help = ["𝖰𝖼 <𝖳𝖾𝗑𝗍𝗈>"]
 handler.tags = ['𝖲𝖳𝖨𝖢𝖪𝖤𝖱𝖲']
 handler.command = /^(qc|quotely)$/i
 
