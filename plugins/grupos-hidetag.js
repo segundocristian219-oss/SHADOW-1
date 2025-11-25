@@ -1,24 +1,12 @@
-// =======================
-//  NOTIFY / N TAG PRO 2.0
-//  Optimizado + Limpio + Estable
-// =======================
-
 import { generateWAMessageFromContent, downloadContentFromMessage } from '@whiskeysockets/baileys'
 import fetch from 'node-fetch'
 
-// =======================
-//   DESCARGA MINIATURA
-// =======================
 let thumb = null
 fetch('https://cdn.russellxz.click/28a8569f.jpeg')
   .then(r => r.arrayBuffer())
   .then(buf => thumb = Buffer.from(buf))
   .catch(() => null)
 
-
-// =======================
-//   DESENROLLAR MENSAJES
-// =======================
 function unwrapMessage(m = {}) {
   let n = m;
   while (
@@ -36,10 +24,6 @@ function unwrapMessage(m = {}) {
   return n;
 }
 
-
-// =======================
-//     DETECTAR TEXTO
-// =======================
 function getMessageText(m) {
   const msg = unwrapMessage(m.message) || {};
   return (
@@ -51,10 +35,6 @@ function getMessageText(m) {
   );
 }
 
-
-// =======================
-// DESCARGA DE MEDIOS PRO
-// =======================
 async function downloadMedia(msgContent, type) {
   try {
     const stream = await downloadContentFromMessage(msgContent, type);
@@ -66,14 +46,9 @@ async function downloadMedia(msgContent, type) {
   }
 }
 
-
-// =======================
-//     HANDLER PRINCIPAL
-// =======================
 const handler = async (m, { conn, participants }) => {
   if (!m.isGroup || m.key.fromMe) return;
 
-  // Mensaje para citar bonito
   const fkontak = {
     key: {
       participants: '0@s.whatsapp.net',
@@ -90,13 +65,11 @@ const handler = async (m, { conn, participants }) => {
     participant: '0@s.whatsapp.net'
   };
 
-  // Detectar comando en cualquier tipo de mensaje
   const content = getMessageText(m);
   if (!/^\.?n(\s|$)/i.test(content.trim())) return;
 
   await conn.sendMessage(m.chat, { react: { text: '🗣️', key: m.key } });
 
-  // MENCIONES ORDENADAS Y SIN DUPLICADOS
   const seen = new Set();
   const users = [];
   for (const p of participants) {
@@ -107,7 +80,6 @@ const handler = async (m, { conn, participants }) => {
     }
   }
 
-  // Mensaje citado desenrollado
   const q = m.quoted ? unwrapMessage(m.quoted) : unwrapMessage(m);
   const mtype = q.mtype || Object.keys(q.message || {})[0] || '';
 
@@ -118,16 +90,12 @@ const handler = async (m, { conn, participants }) => {
     'stickerMessage'
   ].includes(mtype);
 
-  // Texto final para caption o mensaje
   const userText = content.trim().replace(/^\.?n(\s|$)/i, '');
   const originalCaption = (q.msg?.caption || q.text || '').trim();
   const finalCaption = userText || originalCaption || '🔊 Notificación';
 
   try {
 
-    // ==============================
-    //       MANEJO DE MEDIOS
-    // ==============================
     if (isMedia) {
       let buffer = null;
 
@@ -136,7 +104,7 @@ const handler = async (m, { conn, participants }) => {
         buffer = await downloadMedia(q[mtype], detected);
       }
 
-      if (!buffer) buffer = await q.download(); // fallback
+      if (!buffer) buffer = await q.download();
 
       const msg = { mentions: users };
 
@@ -169,10 +137,6 @@ const handler = async (m, { conn, participants }) => {
       return await conn.sendMessage(m.chat, msg, { quoted: fkontak });
     }
 
-
-    // ==============================
-    //   MODIFICAR TEXTO CITADO
-    // ==============================
     if (m.quoted && !isMedia) {
 
       const newMsg = conn.cMod(
@@ -197,9 +161,6 @@ const handler = async (m, { conn, participants }) => {
       );
     }
 
-    // ==============================
-    //   TEXTO SIMPLE (sin citado)
-    // ==============================
     return await conn.sendMessage(
       m.chat,
       { text: finalCaption, mentions: users },
@@ -216,10 +177,6 @@ const handler = async (m, { conn, participants }) => {
   }
 };
 
-
-// =======================
-//     CONFIGURACIÓN
-// =======================
 handler.help = ["𝖭𝗈𝗍𝗂𝖿𝗒"];
 handler.tags = ["𝖦𝖱𝖴𝖯𝖮𝖲"];
 handler.customPrefix = /^\.?n(\s|$)/i;
