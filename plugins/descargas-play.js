@@ -606,14 +606,115 @@ async function downloadAudio(conn, job, asDocument, quoted) {
 
     if (fileSizeMB(file) > MAX_FILE_MB) return conn.sendMessage(chatId, { text: `❌ Archivo >${MAX_FILE_MB}MB` }, { quoted });
 
-    await sendFileToChat(conn, chatId, file, title, asDocument, "audio", quoted);
+    await sendFileToChat(conn, chatId, file, title, asDocument, "video", quoted);
 
     cache[videoUrl] = cache[videoUrl] || { time: Date.now(), files: {} };
     cache[videoUrl].time = Date.now();
-    cache[videoUrl].files.audio = file;
+    cache[videoUrl].files.video = file;
     saveCache();
 
     cleanupPendingByJob(job, conn);
   } catch (err) {
-    console.error("downloadAudio error:", err);
-    await conn
+    console.error("downloadVideo error:", err);
+    await conn.sendMessage(chatId, { text: "❌ Error al descargar video." }, { quoted });
+  }
+}
+
+/* ---------------------------
+   LIMPIEZA y AUTOCLEAN
+   --------------------------- */
+function cleanupPendingByJob(job, conn) {
+  try {
+    for (const id of Object.keys(pending)) {
+      const p = pending[id];
+      if (
+        p &&
+        p.chatId === job.chatId &&
+        p.videoUrl === job.videoUrl &&
+        (p.sender === job.sender || !job.sender)
+      ) {
+        try {
+          if (p.listener) conn.ev.off("messages.upsert", p.listener);
+        } catch (e) {}
+        delete pending[id];
+        if (global.playPreviewListeners[id]) delete global.playPreviewListeners[id];
+        if (global.PLAY_LISTENER_SET[id]) delete global.PLAY_LISTENER_SET[id];
+      }
+    }
+  } catch (e) {
+    console.error("cleanupPendingByJob", e);
+  }
+}
+
+function autoClean() {
+  const now = Date.now();
+  let deleted = 0;
+  let freed = 0;
+
+  for (const vid of Object.keys(cache)) {
+    const entry = cache[vid];
+    if (!entry || !entry.time || now - entry.time > TTL) {
+      if (entry && entry.files) {
+        for (const f of Object.values(entry.files)) {
+          if (f && fs.existsSync(f)) {
+            try {
+              freed += fs.statSync(f).size;
+            } catch {}
+            safeUnlink(f);
+            deleted++;
+          }
+        }
+      }
+      delete cache[vid];
+    }
+  }
+
+  const files = fs.readdirSync(TMP_DIR);
+  const activeTmpFiles = new Set();
+  Object.values(downloadTasks).forEach((t) => {
+    try {
+      if (t && t.meta && t.meta.tmpFile) activeTmpFiles.add(t.meta.tmpFile);
+      if (t && t.file) activeTmpFiles.add(t.file);
+    } catch (e) {}
+  });
+
+  for (const f of files) {
+    const full = path.join(TMP_DIR, f);
+    try {
+      const stat = fs.statSync(full);
+      if (now - stat.mtimeMs > TTL && !activeTmpFiles.has(full)) {
+        try {
+          freed += stat.size;
+        } catch {}
+        safeUnlink(full);
+        deleted++;
+      }
+    } catch {}
+  }
+
+  for (const id of Object.keys(pending)) {
+    const p = pending[id];
+    if (!p || (p.time && now - p.time > TTL)) {
+      try {
+        if (p.listener) global.conn?.ev.off("messages.upsert", p.listener);
+      } catch {}
+      delete pending[id];
+      if (global.playPreviewListeners[id]) delete global.playPreviewListeners[id];
+      if (global.PLAY_LISTENER_SET[id]) delete global.PLAY_LISTENER_SET[id];
+    }
+  }
+
+  saveCache();
+  console.log(`AutoClean → borrados ${deleted} archivos, ${(freed / 1024 / 1024).toFixed(2)} MB liberados.`);
+}
+
+setInterval(autoClean, CLEAN_INTERVAL);
+global.autoclean = autoClean;
+
+/* ---------------------------
+   EXPORTS
+   --------------------------- */
+handler.help = ["𝖯𝗅𝖺𝗒 <𝖳𝖾𝗑𝗍𝗈>"];
+handler.tags = ["𝖣𝖤𝖲𝖢𝖠𝖱𝖦𝖠𝖲"];
+handler.command = ["play", "clean"];
+export default handler;
