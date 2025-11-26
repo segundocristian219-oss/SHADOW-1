@@ -500,4 +500,40 @@ function autoClean(){
   Object.values(downloadTasks).forEach(t => {
     try{
       if(t && t.meta && t.meta.tmpFile) activeTmpFiles.add(t.meta.tmpFile)
-      if(t && t.file) activeTmp
+      if(t && t.file) activeTmpFiles.add(t.file)
+    }catch(e){}
+  })
+
+  for (const f of files) {
+    const full = path.join(TMP_DIR, f)
+    try {
+      const stat = fs.statSync(full)
+      if (now - stat.mtimeMs > TTL && !activeTmpFiles.has(full)) {
+        try{ freed += stat.size }catch{}
+        safeUnlink(full)
+        deleted++
+      }
+    } catch {}
+  }
+
+  for (const id of Object.keys(pending)){
+    const p = pending[id]
+    if (!p || (p.time && now - p.time > TTL)){
+      try{ if(p.listener) global.conn?.ev.off("messages.upsert", p.listener) }catch(e){}
+      delete pending[id]
+      if(global.playPreviewListeners[id]) delete global.playPreviewListeners[id]
+      if(global.__PLAY_LISTENER_SET__[id]) delete global.__PLAY_LISTENER_SET__[id]
+    }
+  }
+
+  saveCache()
+  console.log(`AutoClean → borrados ${deleted} archivos, ${(freed/1024/1024).toFixed(2)} MB liberados.`)
+}
+
+setInterval(autoClean, CLEAN_INTERVAL)
+global.autoclean = autoClean
+
+handler.help=["𝖯𝗅𝖺𝗒 <𝖳𝖾𝗑𝗍𝗈>"]
+handler.tags=["𝖣𝖤𝖲𝖢𝖠𝖱𝖦𝖠𝖲"]
+handler.command=["play","clean"]
+export default handler
