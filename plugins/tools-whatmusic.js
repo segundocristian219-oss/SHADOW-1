@@ -25,7 +25,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
     if (!buffer) return conn.reply(m.chat, 'No pude descargar el archivo.', m)
 
     const duration = q.seconds || 0
-    if (duration > 180) {
+    if (duration > 240) {
       return conn.reply(m.chat, `El archivo solo puede durar 3 minutos máximo. El tuyo dura ${duration}s.`, m)
     }
 
