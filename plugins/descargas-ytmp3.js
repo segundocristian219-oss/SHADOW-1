@@ -1,30 +1,24 @@
-// comandos/ytmp3.js — Sky API (audio) con selección 👍 / ❤️ o 1 / 2, sin límite
 import axios from "axios";
 import fs from "fs";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 
-// Configuración API
 const API_BASE = process.env.API_BASE || "https://api-sky.ultraplus.click";
-const API_KEY  = process.env.API_KEY  || "Russellxz"; // tu API key
+const API_KEY = process.env.API_KEY || "Russellxz";
 
-// Regex para validar URLs de YouTube
 const isYouTube = (u = "") =>
   /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\//i.test(u);
 
-// Formato duración en hh:mm:ss
 const fmtSec = (s) => {
   const n = Number(s || 0);
   const h = Math.floor(n / 3600);
   const m = Math.floor((n % 3600) / 60);
   const sec = n % 60;
-  return (h ? `${h}:` : "") + `${m.toString().padStart(2,"0")}:${sec.toString().padStart(2,"0")}`;
+  return (h ? `${h}:` : "") + `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
 };
 
-// Jobs pendientes por id del mensaje de opciones
 const pendingYTA = Object.create(null);
 
-// Llama a tu Sky API para obtener AUDIO
 async function getYTFromSkyAudio(url) {
   const { data: api, status: http } = await axios.get(
     `${API_BASE}/api/download/yt.php`,
@@ -35,28 +29,43 @@ async function getYTFromSkyAudio(url) {
       validateStatus: s => s >= 200 && s < 600
     }
   );
+
   if (http !== 200 || !api || api.status !== "true" || !api.data?.audio) {
     const msgErr = api?.error || `HTTP ${http}`;
     throw new Error(`No se pudo obtener audio (${msgErr}).`);
   }
-  return api.data; // { title, audio, duration, thumbnail, ... }
+
+  return api.data;
 }
 
-// Transcodifica el source (m4a/webm/etc) a MP3 128k y guarda en /tmp; devuelve ruta
 async function transcodeToMp3Tmp(srcUrl, outName = `ytmp3-${Date.now()}.mp3`) {
   const tmpDir = path.resolve("./tmp");
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, outName);
 
   const resp = await axios.get(srcUrl, { responseType: "stream", timeout: 120000 });
+
+  const ctype = resp.headers["content-type"] || "";
+  if (!ctype.includes("audio") && !ctype.includes("octet")) {
+    throw new Error("El archivo recibido no es audio válido.");
+  }
+
   await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("ffmpeg timeout")), 180000);
+
     ffmpeg(resp.data)
       .audioCodec("libmp3lame")
       .audioBitrate("128k")
       .format("mp3")
       .save(outPath)
-      .on("end", resolve)
-      .on("error", reject);
+      .on("end", () => {
+        clearTimeout(timer);
+        resolve();
+      })
+      .on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
   });
 
   return outPath;
@@ -68,9 +77,7 @@ async function sendMp3(conn, job, asDocument, triggerMsg) {
   await conn.sendMessage(chatId, { react: { text: asDocument ? "📄" : "🎵", key: triggerMsg.key } });
   await conn.sendMessage(chatId, { text: `⏳ Enviando ${asDocument ? "como documento" : "audio"}…` }, { quoted: quotedBase });
 
-  // Transcode → MP3 (128k) a archivo temporal (SIN límite de tamaño)
   const filePath = await transcodeToMp3Tmp(audioSrc, `ytmp3-${Date.now()}.mp3`);
-
   const caption =
 `🎵 𝗬𝗧 𝗠𝗣𝟯 — 𝗟𝗶𝘀𝘁𝗼
 
@@ -80,6 +87,7 @@ async function sendMp3(conn, job, asDocument, triggerMsg) {
 `;
 
   const buf = fs.readFileSync(filePath);
+
   if (asDocument) {
     await conn.sendMessage(chatId, {
       document: buf,
@@ -107,10 +115,9 @@ const handler = async (msg, { conn, text, usedPrefix, command }) => {
   if (!text || !isYouTube(text)) {
     return conn.sendMessage(chatId, {
       text:
-`✳️ 𝙐𝙨𝙤 𝙘𝙤𝙧𝙧𝙚𝙘𝙩𝙤:
-${pref}${command} <enlace de YouTube>
+`${pref}${command} <enlace de YouTube>
 
-📌 𝙀𝙟𝙚𝙢𝙥𝙡𝙤:
+Ejemplo:
 ${pref}${command} https://youtu.be/dQw4w9WgXcQ`
     }, { quoted: msg });
   }
@@ -128,13 +135,13 @@ ${pref}${command} https://youtu.be/dQw4w9WgXcQ`
 `⚡ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 — 𝗔𝘂𝗱𝗶𝗼
 
 Elige cómo enviarlo:
-👍 𝗔𝘂𝗱𝗶𝗼 (normal)
-❤️ 𝗔𝘂𝗱𝗶𝗼 𝗰𝗼𝗺𝗼 𝗱𝗼𝗰𝘂𝗺𝗲𝗻𝘁𝗼
-— 𝗼 responde: 1 = audio · 2 = documento
+👍 Audio (normal)
+❤️ Audio como documento
+1 = Audio
+2 = Documento
 
 ✦ 𝗧𝗶́𝘁𝘂𝗹𝗼: ${title}
 ✦ 𝗗𝘂𝗿𝗮𝗰𝗶𝗼́𝗻: ${durationTxt}
-✦ 𝗦𝗼𝘂𝗿𝗰𝗲: api-sky.ultraplus.click
 ────────────
 `;
 
@@ -145,15 +152,26 @@ Elige cómo enviarlo:
       preview = await conn.sendMessage(chatId, { text: caption }, { quoted: msg });
     }
 
-    pendingYTA[preview.key.id] = { chatId, audioSrc, title, durationTxt, quotedBase: msg };
+    pendingYTA[preview.key.id] = {
+      chatId,
+      audioSrc,
+      title,
+      durationTxt,
+      quotedBase: msg
+    };
+
+    setTimeout(() => {
+      delete pendingYTA[preview.key.id];
+    }, 300000);
+
     await conn.sendMessage(chatId, { react: { text: "✅", key: msg.key } });
 
     if (!conn._ytaListener) {
       conn._ytaListener = true;
+
       conn.ev.on("messages.upsert", async ev => {
         for (const m of ev.messages) {
           try {
-            // Reacciones
             if (m.message?.reactionMessage) {
               const { key: reactKey, text: emoji } = m.message.reactionMessage;
               const job = pendingYTA[reactKey.id];
@@ -164,26 +182,28 @@ Elige cómo enviarlo:
               }
             }
 
-            // Respuestas 1/2
             const ctx = m.message?.extendedTextMessage?.contextInfo;
             const replyTo = ctx?.stanzaId;
-            const textLow =
-              (m.message?.conversation ||
-               m.message?.extendedTextMessage?.text ||
-               "").trim().toLowerCase();
+            const textLow = (
+              m.message?.conversation ||
+              m.message?.extendedTextMessage?.text ||
+              ""
+            ).trim().toLowerCase();
 
             if (replyTo && pendingYTA[replyTo]) {
               const job = pendingYTA[replyTo];
+
               if (textLow === "1" || textLow === "2") {
                 const asDoc = textLow === "2";
                 await sendMp3(conn, job, asDoc, m);
                 delete pendingYTA[replyTo];
               } else {
                 await conn.sendMessage(job.chatId, {
-                  text: "⚠️ Responde con *1* (audio) o *2* (documento), o reacciona con 👍 / ❤️."
+                  text: "Responde con 1 (audio) o 2 (documento), o reacciona con 👍 / ❤️."
                 }, { quoted: job.quotedBase });
               }
             }
+
           } catch (e) {
             console.error("YTMP3 listener error:", e);
           }
@@ -192,15 +212,15 @@ Elige cómo enviarlo:
     }
 
   } catch (err) {
-    console.error("❌ Error en ytmp3 (Sky):", err?.message || err);
+    console.error("❌ Error en ytmp3:", err?.message || err);
     await conn.sendMessage(chatId, {
-      text: `❌ *Error:* ${err?.message || "Fallo al procesar el audio."}`
+      text: `Error: ${err?.message || "Fallo al procesar el audio."}`
     }, { quoted: msg });
     await conn.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
   }
 };
 
-handler.command  = ["ytmp3","yta"];
+handler.command = ["ytmp3", "yta"];
 handler.help     = ["𝖸𝗍𝗆𝗉3 <𝗎𝗋𝗅>"];
 handler.tags     = ["𝖣𝖤𝖲𝖢𝖠𝖱𝖦𝖠𝖲"];
 
