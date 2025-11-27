@@ -24,6 +24,9 @@ let handler = async (m, { conn, participants, isBotAdmin }) => {
   }
 };
 
+
+handler.help = ["𝖱𝗎𝗅𝖾𝗍𝖺𝖻𝖺𝗇"];
+handler.tags = ["𝖦𝖱𝖴𝖯𝖮𝖲"];
 handler.command = ['ruletaban'];
 handler.group = true;
 handler.admin = true;
