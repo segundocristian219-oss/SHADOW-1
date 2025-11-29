@@ -21,7 +21,8 @@ global.vs = '2.2.0'
 global.usedPrefix = '.'
 global.user2 = '18'
 global.sessions = '𝖠𝗇𝗀𝖾𝗅𝖡𝗈𝗍'
-
+global.jadi = 'Angelbots'
+global.yukiJadibts = true
 
 global.namecanal = '𝖠𝗇𝗀𝖾𝗅 𝖡𝗈𝗍 𝖣𝖾𝗌𝖺𝗋𝗋𝗈𝗅𝗅𝗈'
 global.idcanal = '120363402177795471@newsletter'
