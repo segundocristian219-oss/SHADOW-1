@@ -15,7 +15,10 @@ const handler = async (m, { conn }) => {
     const metadata = await conn.groupMetadata(m.chat);
     const groupName = metadata?.subject || "Grupo";
 
-    const link = `*${groupName}*\nhttps://chat.whatsapp.com/${inviteCode}`;
+    // 🔥 Formato perfecto para activar "COPIAR LINK"
+    const link = `https://chat.whatsapp.com/${inviteCode}
+
+*${groupName}*`;
 
     let ppBuffer = null;
     try {
@@ -37,17 +40,10 @@ const handler = async (m, { conn }) => {
     console.error(error);
     await conn.sendMessage(
       m.chat,
-      { text: "❌ Error inesperado al obtener el link o la foto del grupo." },
+      { text: "⚠️ Ocurrió un error obteniendo el link del grupo." },
       { quoted: m }
     );
   }
 };
-
-handler.help = ["𝖫𝗂𝗇𝗄"];
-handler.tags = ["𝖦𝖱𝖴𝖯𝖮𝖲"];
-handler.customPrefix = /^\.?(link)$/i;
-handler.command = new RegExp();
-handler.group = true;
-handler.admin = true;
 
 export default handler;
