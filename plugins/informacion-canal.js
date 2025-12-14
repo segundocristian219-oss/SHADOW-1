@@ -5,7 +5,7 @@ export async function before(m, { conn }) {
   try {
 
     let nombreBot = global.namebot || '𝑺𝑯𝑨𝑫𝑶𝑾 𝑩𝑶𝑻'
-    let bannerFinal = 'https://cdn.russellxz.click/0511ac06.jpeg'
+    let bannerFinal = 'https://cdn.russellxz.click/1fdb3ce2.jpeg'
 
 
     const botActual = conn.user?.jid?.split('@')[0].replace(/\D/g, '')
