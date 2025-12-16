@@ -1,86 +1,318 @@
-import fetch from "node-fetch"
-import yts from 'yt-search'
+import axios from "axios"
+import yts from "yt-search"
+import fs from "fs"
+import path from "path"
+import ffmpeg from "fluent-ffmpeg"
+import { promisify } from "util"
+import { pipeline } from "stream"
+import crypto from "crypto"
 
-const handler = async (m, { conn, text, usedPrefix, command }) => {
-try {
-if (!text.trim()) return conn.reply(m.chat, `❀ Por favor, ingresa el nombre de la música a descargar.`, m)
-await m.react('🕒')
-const videoMatch = text.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/|v\/))([a-zA-Z0-9_-]{11})/)
-const query = videoMatch ? 'https://youtu.be/' + videoMatch[1] : text
-const search = await yts(query)
-const result = videoMatch ? search.videos.find(v => v.videoId === videoMatch[1]) || search.all[0] : search.all[0]
-if (!result) throw 'ꕥ No se encontraron resultados.'
-const { title, thumbnail, timestamp, views, ago, url, author, seconds } = result
-if (seconds > 1800) throw '⚠ El contenido supera el límite de duración (10 minutos).'
-const vistas = formatViews(views)
-const info = `「✦」Descargando *<${title}>*\n\n> ❑ Canal » *${author.name}*\n> ♡ Vistas » *${vistas}*\n> ✧︎ Duración » *${timestamp}*\n> ☁︎ Publicado » *${ago}*\n> ➪ Link » ${url}`
-const thumb = (await conn.getFile(thumbnail)).data
-await conn.sendMessage(m.chat, { image: thumb, caption: info }, { quoted: m })
-if (['play', 'yta', 'ytmp3', 'playaudio'].includes(command)) {
-const audio = await getAud(url)
-if (!audio?.url) throw '⚠ No se pudo obtener el audio.'
-m.reply(`> ❀ *Audio procesado. Servidor:* \`${audio.api}\``)
-await conn.sendMessage(m.chat, { audio: { url: audio.url }, fileName: `${title}.mp3`, mimetype: 'audio/mpeg' }, { quoted: m })
-await m.react('✔️')
-} else if (['play2', 'ytv', 'ytmp4', 'mp4'].includes(command)) {
-const video = await getVid(url)
-if (!video?.url) throw '⚠ No se pudo obtener el video.'
-m.reply(`> ❀ *Vídeo procesado. Servidor:* \`${video.api}\``)
-await conn.sendFile(m.chat, video.url, `${title}.mp4`, `> ❀ ${title}`, m)
-await m.react('✔️')
-}} catch (e) {
-await m.react('✖️')
-return conn.reply(m.chat, typeof e === 'string' ? e : '⚠︎ Se ha producido un problema.\n> Usa *' + usedPrefix + 'report* para informarlo.\n\n' + e.message, m)
-}}
+const streamPipe = promisify(pipeline)
+const TMP_DIR = path.join(process.cwd(), "tmp")
+if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true })
 
-handler.command = handler.help = ['play', 'yta', 'ytmp3', 'play2', 'ytv', 'ytmp4', 'playaudio', 'mp4']
-handler.tags = ['descargas']
-handler.group = true
+const SKY_BASE = process.env.API_BASE || "https://api-sky.ultraplus.click"
+const SKY_KEY = process.env.API_KEY || "Russellxz"
 
+const pending = {}
+const cache = {}
+const MAX_CONCURRENT = 3
+let activeDownloads = 0
+const downloadQueue = []
+
+function safeUnlink(file) {
+  if (!file) return
+  try { fs.existsSync(file) && fs.unlinkSync(file) } catch {}
+}
+
+function fileSizeMB(filePath) {
+  return fs.statSync(filePath).size / (1024 * 1024)
+}
+
+async function queueDownload(task) {
+  if (activeDownloads >= MAX_CONCURRENT) {
+    await new Promise(resolve => downloadQueue.push(resolve))
+  }
+  activeDownloads++
+  try {
+    return await task()
+  } finally {
+    activeDownloads--
+    if (downloadQueue.length) downloadQueue.shift()()
+  }
+}
+
+async function downloadToFile(url, filePath, timeout = 60000) {
+  const res = await axios.get(url, {
+    responseType: "stream",
+    timeout,
+    headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 10; WhatsAppBot)" }
+  })
+  await streamPipe(res.data, fs.createWriteStream(filePath))
+  return filePath
+}
+
+async function wait(ms) {
+  return new Promise(res => setTimeout(res, ms))
+}
+
+async function getSkyApiUrl(videoUrl, format, timeout = 20000, retries = 1) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const { data } = await axios.get(`${SKY_BASE}/api/download/yt.php`, {
+        params: { url: videoUrl, format },
+        headers: { Authorization: `Bearer ${SKY_KEY}` },
+        timeout
+      })
+      const result = data?.data || data
+      const url = result?.audio || result?.video || result?.url || result?.download
+      if (url && url.startsWith("http")) return url
+    } catch {}
+    if (attempt < retries) await wait(1000)
+  }
+  return null
+}
+
+async function convertToMp3(inputFile) {
+  const outFile = inputFile.replace(path.extname(inputFile), ".mp3")
+  await new Promise((resolve, reject) =>
+    ffmpeg(inputFile)
+      .audioCodec("libmp3lame")
+      .audioBitrate("128k")
+      .format("mp3")
+      .on("end", resolve)
+      .on("error", reject)
+      .save(outFile)
+  )
+  safeUnlink(inputFile)
+  return outFile
+}
+
+async function prepareFormats(videoUrl, id) {
+  const groups = [
+    [
+      { key: "audio", format: "audio", ext: "mp3" },
+      { key: "video", format: "video", ext: "mp4" }
+    ],
+    [
+      { key: "audioDoc", format: "audio", ext: "mp3" },
+      { key: "videoDoc", format: "video", ext: "mp4" }
+    ]
+  ]
+  cache[id] = { timestamp: Date.now(), files: {} }
+  try {
+    await Promise.all(groups[0].map(async f => {
+      const mediaUrl = await getSkyApiUrl(videoUrl, f.format)
+      if (!mediaUrl) return
+      const unique = crypto.randomUUID()
+      const file = path.join(TMP_DIR, `${unique}_${f.key}.${f.ext}`)
+      await queueDownload(() => downloadToFile(mediaUrl, file))
+      cache[id].files[f.key] = file
+    }))
+  } catch {}
+  for (const f of groups[1]) {
+    try {
+      const mediaUrl = await getSkyApiUrl(videoUrl, f.format)
+      if (!mediaUrl) continue
+      const unique = crypto.randomUUID()
+      const file = path.join(TMP_DIR, `${unique}_${f.key}.${f.ext}`)
+      await queueDownload(() => downloadToFile(mediaUrl, file))
+      cache[id].files[f.key] = file
+    } catch {}
+  }
+}
+
+async function sendFile(conn, chatId, filePath, title, asDocument, type, quoted) {
+  if (!fs.existsSync(filePath)) return
+  const buffer = fs.readFileSync(filePath)
+  const mimetype = type === "audio" ? "audio/mpeg" : "video/mp4"
+  const fileName = `${title}.${type === "audio" ? "mp3" : "mp4"}`
+  await conn.sendMessage(chatId, {
+    [asDocument ? "document" : type]: buffer,
+    mimetype,
+    fileName
+  }, { quoted })
+}
+
+async function handleDownload(conn, job, choice) {
+  const mapping = { "👍": "audio", "❤️": "video", "📄": "audioDoc", "📁": "videoDoc" }
+  const key = mapping[choice]
+  if (!key) return
+  const isDoc = key.endsWith("Doc")
+  const type = key.startsWith("audio") ? "audio" : "video"
+  const timeout = type === "audio" ? 20000 : 40000
+  let filePath
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const cached = cache[job.commandMsg.key.id]?.files?.[key]
+      if (cached && fs.existsSync(cached)) {
+        const size = fileSizeMB(cached).toFixed(1)
+        await conn.sendMessage(job.chatId, { text: `⚡ Enviando ${type} (${size} MB)` }, { quoted: job.commandMsg })
+        await sendFile(conn, job.chatId, cached, job.title, isDoc, type, job.commandMsg)
+        return
+      }
+
+      if (attempt === 1) {
+        await conn.sendMessage(job.chatId, { text: `⏳ Reintentando descarga...` }, { quoted: job.commandMsg })
+      } else {
+        await conn.sendMessage(job.chatId, { text: `⏳ Descargando ${isDoc ? "documento" : type}...` }, { quoted: job.commandMsg })
+      }
+
+      const mediaUrl = await getSkyApiUrl(job.videoUrl, type, timeout, 1)
+      if (!mediaUrl) throw new Error("No se obtuvo enlace válido de la API")
+
+      const ext = type === "audio" ? "mp3" : "mp4"
+      const unique = crypto.randomUUID()
+      const inFile = path.join(TMP_DIR, `${unique}_in.${ext}`)
+      filePath = inFile
+
+      await queueDownload(() => downloadToFile(mediaUrl, inFile, timeout))
+
+      if (type === "audio" && path.extname(inFile) !== ".mp3") {
+        filePath = await convertToMp3(inFile)
+      }
+
+      const sizeMB = fileSizeMB(filePath)
+      if (sizeMB > 99) throw new Error(`Archivo demasiado grande (${sizeMB.toFixed(2)}MB)`)
+
+      await sendFile(conn, job.chatId, filePath, job.title, isDoc, type, job.commandMsg)
+      return
+    } catch (err) {
+      if (attempt === 1) {
+        await conn.sendMessage(job.chatId, { text: `❌ Error: ${err.message}` }, { quoted: job.commandMsg })
+      }
+    } finally {
+      safeUnlink(filePath)
+    }
+  }
+}
+
+const handler = async (msg, { conn, text, command }) => {
+  const pref = global.prefixes?.[0] || "."
+
+  if (command === "clean") {
+    const files = fs.readdirSync(TMP_DIR).map(f => path.join(TMP_DIR, f))
+    let total = 0
+    for (const f of files) {
+      try {
+        total += fs.statSync(f).size
+        fs.unlinkSync(f)
+      } catch {}
+    }
+    const freed = (total / (1024 * 1024)).toFixed(2)
+    return conn.sendMessage(msg.chat, {
+      text: `🧹 Limpieza completada\nArchivos eliminados: ${files.length}\nEspacio liberado: ${freed} MB`
+    }, { quoted: msg })
+  }
+
+  if (!text?.trim()) {
+    return conn.sendMessage(msg.key.remoteJid, {
+      text: `✳️ Usa:\n${pref}play <término>\nEj: *${pref}play* bad bunny diles`
+    }, { quoted: msg })
+  }
+
+  await conn.sendMessage(msg.key.remoteJid, { react: { text: "⏳", key: msg.key } })
+
+  let res
+  try { res = await yts(text) }
+  catch { return conn.sendMessage(msg.key.remoteJid, { text: "❌ Error al buscar video." }, { quoted: msg }) }
+
+  const video = res.videos?.[0]
+  if (!video) {
+    return conn.sendMessage(msg.key.remoteJid, { text: "❌ Sin resultados." }, { quoted: msg })
+  }
+
+  const { url: videoUrl, title, timestamp: duration, views, author, thumbnail } = video
+  const viewsFmt = (views || 0).toLocaleString()
+  const caption = `
+𝚂𝚄𝙿𝙴𝚁 𝙿𝙻𝙰𝚈
+🎵 𝚃𝚒́𝚝𝚞𝚕𝚘: ${title}
+🕑 𝙳𝚞𝚛𝚊𝚌𝚒𝚘́𝚗: ${duration}
+👁️‍🗨️ 𝚅𝚒𝚜𝚝𝚊𝚜: ${viewsFmt}
+🎤 𝙰𝚛𝚝𝚒𝚜𝚝𝚊: ${author?.name || author || "Desconocido"}
+🌐 𝙻𝚒𝚗𝚔: ${videoUrl}
+
+📥 Opciones de descarga (usa reacciones):
+☛ 👍 Audio MP3
+☛ ❤️ Video MP4
+☛ 📄 Audio Doc
+☛ 📁 Video Doc
+`.trim()
+
+  const preview = await conn.sendMessage(msg.key.remoteJid, { image: { url: thumbnail }, caption }, { quoted: msg })
+  pending[preview.key.id] = {
+    chatId: msg.key.remoteJid,
+    videoUrl,
+    title,
+    commandMsg: msg,
+    sender: msg.key.participant || msg.participant,
+    downloading: false
+  }
+  prepareFormats(videoUrl, preview.key.id)
+  setTimeout(() => delete pending[preview.key.id], 10 * 60 * 1000)
+  await conn.sendMessage(msg.key.remoteJid, { react: { text: "✅", key: msg.key } })
+
+  if (!conn._listeners) conn._listeners = {}
+  if (!conn._listeners.play) {
+    conn._listeners.play = true
+    conn.ev.on("messages.upsert", async ev => {
+      for (const m of ev.messages || []) {
+        const react = m.message?.reactionMessage
+        if (!react) continue
+        const { key: reactKey, text: emoji, sender } = react
+        const job = pending[reactKey?.id]
+        if (!job || !["👍","❤️","📄","📁"].includes(emoji)) continue
+        if ((sender || m.key.participant) !== job.sender) {
+          await conn.sendMessage(job.chatId, { text: "❌ Solo quien solicitó el comando puede usar las reacciones." }, { quoted: job.commandMsg })
+          continue
+        }
+        if (job.downloading) continue
+        job.downloading = true
+        try { await handleDownload(conn, job, emoji) }
+        finally { job.downloading = false }
+      }
+    })
+  }
+}
+
+handler.command = ["play","clean"]
 export default handler
 
-async function getAud(url) {
-const apis = [
-{ api: 'Adonix', endpoint: `${global.APIs.adonix.url}/download/ytaudio?apikey=${global.APIs.adonix.key}&url=${encodeURIComponent(url)}`, extractor: res => res.data?.url },
-{ api: 'ZenzzXD', endpoint: `${global.APIs.zenzxz.url}/downloader/ytmp3?url=${encodeURIComponent(url)}`, extractor: res => res.data?.download_url },
-{ api: 'ZenzzXD v2', endpoint: `${global.APIs.zenzxz.url}/downloader/ytmp3v2?url=${encodeURIComponent(url)}`, extractor: res => res.data?.download_url },
-{ api: 'Yupra', endpoint: `${global.APIs.yupra.url}/api/downloader/ytmp3?url=${encodeURIComponent(url)}`, extractor: res => res.result?.link },
-{ api: 'Vreden', endpoint: `${global.APIs.vreden.url}/api/v1/download/youtube/audio?url=${encodeURIComponent(url)}&quality=128`, extractor: res => res.result?.download?.url },
-{ api: 'Vreden v2', endpoint: `${global.APIs.vreden.url}/api/v1/download/play/audio?query=${encodeURIComponent(url)}`, extractor: res => res.result?.download?.url },
-{ api: 'Xyro', endpoint: `${global.APIs.xyro.url}/download/youtubemp3?url=${encodeURIComponent(url)}`, extractor: res => res.result?.download }
-]
-return await fetchFromApis(apis)
-}
-async function getVid(url) {
-const apis = [
-{ api: 'Adonix', endpoint: `${global.APIs.adonix.url}/download/ytvideo?apikey=${global.APIs.adonix.key}&url=${encodeURIComponent(url)}`, extractor: res => res.data?.url },
-{ api: 'ZenzzXD', endpoint: `${global.APIs.zenzxz.url}/downloader/ytmp4?url=${encodeURIComponent(url)}&resolution=360p`, extractor: res => res.data?.download_url },
-{ api: 'ZenzzXD v2', endpoint: `${global.APIs.zenzxz.url}/downloader/ytmp4v2?url=${encodeURIComponent(url)}&resolution=360`, extractor: res => res.data?.download_url },
-{ api: 'Yupra', endpoint: `${global.APIs.yupra.url}/api/downloader/ytmp4?url=${encodeURIComponent(url)}`, extractor: res => res.result?.formats?.[0]?.url },
-{ api: 'Vreden', endpoint: `${global.APIs.vreden.url}/api/v1/download/youtube/video?url=${encodeURIComponent(url)}&quality=360`, extractor: res => res.result?.download?.url },
-{ api: 'Vreden v2', endpoint: `${global.APIs.vreden.url}/api/v1/download/play/video?query=${encodeURIComponent(url)}`, extractor: res => res.result?.download?.url },
-{ api: 'Xyro', endpoint: `${global.APIs.xyro.url}/download/youtubemp4?url=${encodeURIComponent(url)}&quality=360`, extractor: res => res.result?.download }
-]
-return await fetchFromApis(apis)
-}
-async function fetchFromApis(apis) {
-for (const { api, endpoint, extractor } of apis) {
-try {
-const controller = new AbortController()
-const timeout = setTimeout(() => controller.abort(), 10000)
-const res = await fetch(endpoint, { signal: controller.signal }).then(r => r.json())
-clearTimeout(timeout)
-const link = extractor(res)
-if (link) return { url: link, api }
-} catch (e) {}
-await new Promise(resolve => setTimeout(resolve, 500))
-}
-return null
-}
-function formatViews(views) {
-if (views === undefined) return "No disponible"
-if (views >= 1_000_000_000) return `${(views / 1_000_000_000).toFixed(1)}B (${views.toLocaleString()})`
-if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M (${views.toLocaleString()})`
-if (views >= 1_000) return `${(views / 1_000).toFixed(1)}k (${views.toLocaleString()})`
-return views.toString()
-}
+setInterval(() => {
+  const now = Date.now()
+  let totalDeleted = 0
+  let countDeleted = 0
+
+  for (const [id, data] of Object.entries(cache)) {
+    if (now - data.timestamp > 20 * 24 * 60 * 60 * 1000) {
+      for (const f of Object.values(data.files)) {
+        if (fs.existsSync(f)) {
+          try {
+            totalDeleted += fs.statSync(f).size
+            fs.unlinkSync(f)
+            countDeleted++
+          } catch {}
+        }
+      }
+      delete cache[id]
+    }
+  }
+
+  const files = fs.readdirSync(TMP_DIR).map(f => path.join(TMP_DIR, f))
+  for (const f of files) {
+    try {
+      const stats = fs.statSync(f)
+      if (now - stats.mtimeMs > 20 * 24 * 60 * 60 * 1000) {
+        totalDeleted += stats.size
+        fs.unlinkSync(f)
+        countDeleted++
+      }
+    } catch {}
+  }
+
+  if (countDeleted) {
+    const freed = (totalDeleted / (1024 * 1024)).toFixed(2)
+    console.log(`🧹 Limpieza automática: Archivos eliminados: ${countDeleted}, Espacio liberado: ${freed} MB`)
+  }
+}, 60 * 60 * 1000)
