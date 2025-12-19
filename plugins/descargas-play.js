@@ -10,22 +10,29 @@ import crypto from "crypto"
 const streamPipe = promisify(pipeline)
 
 const TMP_DIR = path.join(process.cwd(), "tmp")
-if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true })
+fs.rmSync(TMP_DIR, { recursive: true, force: true })
+fs.mkdirSync(TMP_DIR, { recursive: true })
 
-const CACHE_FILE = path.join(TMP_DIR, "cache.json")
+const AUDIO_DIR = path.join(process.cwd(), "Canciones", "audio")
+const VIDEO_DIR = path.join(process.cwd(), "Canciones", "video")
+fs.mkdirSync(AUDIO_DIR, { recursive: true })
+fs.mkdirSync(VIDEO_DIR, { recursive: true })
 
 const API_BASE = (process.env.API_BASE || "https://api-sky.ultraplus.click").replace(/\/+$/, "")
-const API_KEY = process.env.API_KEY || "sk_80d69172-f6c4-430d-be35-395b72e7113b"
+const API_KEY = process.env.API_KEY || "No quemes mi key hpt"
 
 const MAX_CONCURRENT = 3
 const MAX_MB = 99
 const DOWNLOAD_TIMEOUT = 60000
-const CACHE_TTL = 1000 * 60 * 60 * 24 * 7
 
 let active = 0
 const queue = []
 const tasks = {}
-let cache = loadCache()
+const cache = {}
+
+function saveCache() {
+  return true
+}
 
 function safeUnlink(f) {
   try { f && fs.existsSync(f) && fs.unlinkSync(f) } catch {}
@@ -50,34 +57,11 @@ function readHeader(file, len = 16) {
 function validFile(file) {
   if (!file || !fs.existsSync(file)) return false
   const size = fs.statSync(file).size
-  if (size < 500000) return false
+  if (size < 150000) return false
   const hex = readHeader(file)
   if (file.endsWith(".mp3") && !(hex.startsWith("494433") || hex.startsWith("fff"))) return false
   if (file.endsWith(".mp4") && !hex.includes("66747970")) return false
   return true
-}
-
-function saveCache() {
-  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache)) } catch {}
-}
-
-function loadCache() {
-  try {
-    if (!fs.existsSync(CACHE_FILE)) return {}
-    const data = JSON.parse(fs.readFileSync(CACHE_FILE))
-    const now = Date.now()
-    for (const id in data) {
-      if (now - data[id].timestamp > CACHE_TTL) delete data[id]
-      else {
-        for (const k in data[id].files) {
-          if (!fs.existsSync(data[id].files[k])) delete data[id].files[k]
-        }
-      }
-    }
-    return data
-  } catch {
-    return {}
-  }
 }
 
 async function queueDownload(task) {
@@ -158,9 +142,7 @@ async function downloadStream(url, file) {
 
 async function toMp3(input) {
   if (input.endsWith(".mp3")) return input
-
   const out = input.replace(/\.\w+$/, ".mp3")
-
   await new Promise((res, rej) =>
     ffmpeg(input)
       .audioCodec("libmp3lame")
@@ -169,9 +151,21 @@ async function toMp3(input) {
       .on("end", res)
       .on("error", rej)
   )
-
   safeUnlink(input)
   return out
+}
+
+function moveToStore(file, title, type) {
+  const safe = title.replace(/[^\w\s\-().]/gi, "").slice(0, 80)
+  const dir = type === "audio" ? AUDIO_DIR : VIDEO_DIR
+  const ext = type === "audio" ? "mp3" : "mp4"
+  const dest = path.join(dir, `${safe}.${ext}`)
+  if (fs.existsSync(dest)) {
+    safeUnlink(file)
+    return dest
+  }
+  fs.renameSync(file, dest)
+  return dest
 }
 
 async function startDownload(id, key, mediaUrl) {
@@ -186,7 +180,11 @@ async function startDownload(id, key, mediaUrl) {
     await downloadStream(mediaUrl, file)
     const final = key === "audio" ? await toMp3(file) : file
 
-    if (!validFile(final)) throw "Archivo inválido"
+    if (!validFile(final)) {
+      safeUnlink(final)
+      throw "Archivo inválido"
+    }
+
     if (fileSizeMB(final) > MAX_MB) throw "Archivo muy grande"
 
     return final
@@ -313,10 +311,10 @@ export default async function handler(msg, { conn, text }) {
       const [type, isDoc] = map[choice]
 
       const cached = cache[job.videoUrl]?.files?.[type]
-      if (cached && fs.existsSync(cached)) {
+      if (cached && fs.existsSync(cached) && validFile(cached)) {
         await conn.sendMessage(
           job.chatId,
-          { text: `⚡ Mandando desde cache: ${type}` },
+          { text: `⚡ Enviando desde tmp: ${type}` },
           { quoted: job.commandMsg }
         )
         await sendFile(conn, job, cached, isDoc, type, job.commandMsg)
@@ -329,23 +327,14 @@ export default async function handler(msg, { conn, text }) {
         { quoted: job.commandMsg }
       )
 
-      let mediaUrl
       try {
-        mediaUrl = await callYoutubeResolve(job.videoUrl, { type })
-      } catch (e) {
-        await conn.sendMessage(job.chatId, { text: `❌ Error API: ${e}` }, { quoted: job.commandMsg })
-        continue
-      }
+        const mediaUrl = await callYoutubeResolve(job.videoUrl, { type })
+        let file = await startDownload(job.videoUrl, type, mediaUrl)
+        file = moveToStore(file, job.title, type)
 
-      if (!mediaUrl) {
-        await conn.sendMessage(job.chatId, { text: "❌ No se pudo obtener enlace." }, { quoted: job.commandMsg })
-        continue
-      }
-
-      try {
-        const file = await startDownload(job.videoUrl, type, mediaUrl)
         cache[job.videoUrl] = cache[job.videoUrl] || { timestamp: Date.now(), files: {} }
         cache[job.videoUrl].files[type] = file
+
         saveCache()
         await sendFile(conn, job, file, isDoc, type, job.commandMsg)
       } catch (e) {
